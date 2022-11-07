@@ -2,7 +2,7 @@
 
 ## TODO  
 
-- [ ] Lab 1: MapReduce
+- [x] Lab 1: MapReduce
 - [ ] Lab 2: Raft  
   - [ ] Part 2A: leader election
   - [ ] Part 2B: log
