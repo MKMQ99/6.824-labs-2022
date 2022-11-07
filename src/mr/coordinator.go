@@ -26,7 +26,7 @@ const (
 	DoneState
 )
 
-//阶段类型
+// 阶段类型
 const (
 	MapPhase int = iota
 	ReducePhase
@@ -52,19 +52,15 @@ type TaskState struct {
 
 // Your code here -- RPC handlers for the worker to call.
 
-//
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
 
-//
 // start a thread that listens for RPCs from worker.go
-//
 func (c *Coordinator) server() {
 	rpc.Register(c)
 	rpc.HandleHTTP()
@@ -78,10 +74,8 @@ func (c *Coordinator) server() {
 	go http.Serve(l, nil)
 }
 
-//
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
-//
 func (c *Coordinator) Done() bool {
 	ret := false
 	// Your code here.
@@ -94,11 +88,9 @@ func (c *Coordinator) Done() bool {
 	return ret
 }
 
-//
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
-//
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
 		ReduceNum:         nReduce,
@@ -115,11 +107,11 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// Your code here.
 
 	c.MakeMapTasks()
-
+	fmt.Printf("MakeMapTasks Success!\n")
 	c.server()
-
+	fmt.Printf("RPC Server Start Success!\n")
 	go c.CrashDetector()
-
+	fmt.Printf("CrashDetector Start Success!\n")
 	return &c
 }
 
@@ -133,7 +125,7 @@ func (c *Coordinator) CrashDetector() {
 		}
 
 		for _, v := range c.TaskMaps {
-			if v.State == WorkingState && time.Since(v.StartTime) > 9*time.Second {
+			if v.State == WorkingState && time.Since(v.StartTime) > 10*time.Second {
 				fmt.Printf("the task[ %d ] is crash,take [%d] s\n", v.TaskAdr.TaskId, time.Since(v.StartTime))
 
 				switch v.TaskAdr.TaskType {
@@ -155,6 +147,7 @@ func (c *Coordinator) CrashDetector() {
 }
 
 func (c *Coordinator) MakeMapTasks() {
+	fmt.Printf("Begin MakeMapTasks!\n")
 	for _, v := range c.InputFiles {
 		id := c.GenerateTaskId()
 		task := Task{
@@ -168,18 +161,18 @@ func (c *Coordinator) MakeMapTasks() {
 		// 	// TaskAdr: &task,
 		// }
 		_, ok := c.TaskMaps[id]
-		if ok == true {
+		if ok {
 			fmt.Printf("contains task which id = %d", id)
 			return
 		} else {
 			c.TaskMaps[id] = &TaskState{
-				State:     WaitingState,
-				StartTime: time.Now(),
-				TaskAdr:   &task,
+				State:   WaitingState,
+				TaskAdr: &task,
 			}
 		}
-		// fmt.Printf("Make a map task\n")
+		// fmt.Printf("%v\n", c.TaskMaps[id])
 		c.TaskChannelMap <- &task
+		// fmt.Printf("task : %v\n", task)
 	}
 
 }
@@ -194,7 +187,7 @@ func (c *Coordinator) MakeReduceTasks() {
 			InputFile: ChooseReduceFiles(i),
 		}
 		_, ok := c.TaskMaps[id]
-		if ok == true {
+		if ok {
 			fmt.Printf("contains task which id = %d", id)
 			return
 		} else {
@@ -236,11 +229,16 @@ func (c *Coordinator) SendTask(args *Taskargs, reply *Task) error {
 		{
 			if len(c.TaskChannelMap) > 0 {
 				*reply = *<-c.TaskChannelMap
-				taskState, ok := c.TaskMaps[c.Taskid]
+				id := reply.TaskId
+				// fmt.Printf("%v\n", reply)
+				taskState, ok := c.TaskMaps[id]
+				// fmt.Printf("%v\n", c.TaskMaps[id])
 				if !ok || taskState.State != WaitingState {
-					fmt.Printf("The Map Task %d is running or there is no this task!", c.Taskid)
+					fmt.Printf("The Map Task %d is running or there is no this task!\n", id)
+				} else {
+					c.TaskMaps[id].StartTime = time.Now()
+					c.TaskMaps[id].State = WorkingState
 				}
-				c.TaskMaps[c.Taskid].State = WorkingState
 			} else {
 				reply.TaskType = Waiting
 				if c.CheckTaskAllDone() {
@@ -253,11 +251,14 @@ func (c *Coordinator) SendTask(args *Taskargs, reply *Task) error {
 		{
 			if len(c.TaskChannelReduce) > 0 {
 				*reply = *<-c.TaskChannelReduce
-				taskState, ok := c.TaskMaps[c.Taskid]
+				id := reply.TaskId
+				taskState, ok := c.TaskMaps[id]
 				if !ok || taskState.State != WaitingState {
-					fmt.Printf("The Reduce Task %d is running or there is no this task!", c.Taskid)
+					fmt.Printf("The Reduce Task %d is running or there is no this task!\n", id)
+				} else {
+					c.TaskMaps[id].StartTime = time.Now()
+					c.TaskMaps[id].State = WorkingState
 				}
-				c.TaskMaps[c.Taskid].State = WorkingState
 			} else {
 				reply.TaskType = Waiting
 				if c.CheckTaskAllDone() {
@@ -327,10 +328,12 @@ func (c *Coordinator) MapFinished(args *Task, reply *Task) error {
 	case MapTask:
 		{
 			taskState, ok := c.TaskMaps[args.TaskId]
+			// fmt.Printf("State info : %v\n", c.TaskMaps[args.TaskId])
 			if ok && taskState.State == WorkingState {
 				c.TaskMaps[args.TaskId].State = DoneState
+				fmt.Printf("Map task Id[%d] Done\n", args.TaskId)
 			} else {
-				fmt.Printf("Map task Id[%d] is finished,already ! or Maybe you have be crashed?!\n", args.TaskId)
+				fmt.Printf("Map task Id[%d] is finished already ! or Maybe you have be crashed?!\n", args.TaskId)
 			}
 		}
 	case ReduceTask:
@@ -339,7 +342,7 @@ func (c *Coordinator) MapFinished(args *Task, reply *Task) error {
 			if ok && taskState.State == WorkingState {
 				c.TaskMaps[args.TaskId].State = DoneState
 			} else {
-				fmt.Printf("Reduce task Id[%d] is finished,already ! or Maybe you have be crashed?!\n", args.TaskId)
+				fmt.Printf("Reduce task Id[%d] is finished already ! or Maybe you have be crashed?!\n", args.TaskId)
 			}
 		}
 	default:

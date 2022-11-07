@@ -13,9 +13,7 @@ import (
 	"time"
 )
 
-//
 // Map functions return a slice of KeyValue.
-//
 type KeyValue struct {
 	Key   string
 	Value string
@@ -29,10 +27,8 @@ func (a ByKey) Len() int           { return len(a) }
 func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
-//
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-//
 func ihash(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
@@ -50,16 +46,14 @@ const (
 type Task struct {
 	TaskType  int      // 任务类型，是map还是reduce
 	TaskId    int      // 任务Id
-	InputFile []string // 输入文件
 	ReduceNum int      // 作为Reducer的Worker数量
+	InputFile []string // 输入文件
 }
 
 // 请求一个任务，不需要参数
 type Taskargs struct{}
 
-//
 // main/mrworker.go calls this function.
-//
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
@@ -73,17 +67,17 @@ func Worker(mapf func(string, string) []KeyValue,
 		switch task.TaskType {
 		case MapTask:
 			{
-				DoMap(mapf, &task)
-				CallDone()
+				DoMap(mapf, task)
+				CallDone(task)
 			}
 		case ReduceTask:
 			{
-				DoReduce(reducef, &task)
-				CallDone()
+				DoReduce(reducef, task)
+				CallDone(task)
 			}
 		case Waiting:
 			{
-				fmt.Println("There is no task to do, please waiting!\n")
+				fmt.Printf("There is no task to do, please waiting!\n")
 				time.Sleep(time.Second)
 			}
 		case Exit:
@@ -95,11 +89,9 @@ func Worker(mapf func(string, string) []KeyValue,
 	}
 }
 
-//
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func CallExample() {
 
 	// declare an argument structure.
@@ -124,11 +116,9 @@ func CallExample() {
 	}
 }
 
-//
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-//
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
@@ -137,7 +127,7 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 		log.Fatal("dialing:", err)
 	}
 	defer c.Close()
-
+	// fmt.Printf("%s\n", rpcname)
 	err = c.Call(rpcname, args, reply)
 	if err == nil {
 		return true
@@ -147,7 +137,7 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	return false
 }
 
-func GetTask() Task {
+func GetTask() *Task {
 	args := Taskargs{}
 	reply := Task{}
 	ok := call("Coordinator.SendTask", &args, &reply)
@@ -156,6 +146,7 @@ func GetTask() Task {
 	} else {
 		fmt.Printf("call failed!\n")
 	}
+	return &reply
 }
 
 func DoMap(mapf func(string, string) []KeyValue, task *Task) {
@@ -165,6 +156,7 @@ func DoMap(mapf func(string, string) []KeyValue, task *Task) {
 	// accumulate the intermediate Map output.
 	//
 	intermediate := []KeyValue{}
+	// fmt.Println(len(task.InputFile))
 	inputFile := task.InputFile[0]
 	file, err := os.Open(inputFile)
 	if err != nil {
@@ -245,13 +237,13 @@ func shuffle(files []string) []KeyValue {
 	return kva
 }
 
-func CallDone() Task {
-	args := Task{}
+func CallDone(f *Task) Task {
+	args := f
 	reply := Task{}
 	ok := call("Coordinator.MapFinished", &args, &reply)
 
 	if ok {
-		fmt.Println("Coordinator get the message of map task success!\n")
+		fmt.Printf("Coordinator get the message of map task success!\n")
 	} else {
 		fmt.Printf("call failed!\n")
 	}
