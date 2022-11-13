@@ -18,6 +18,7 @@ const (
 	ELECTION_TIMEOUT_MIN = 200
 
 	HeartbeatSleep = 120
+	AppliedSleep   = 10
 )
 
 func getRand(server int64) int {
@@ -40,7 +41,12 @@ func (rf *Raft) UpToDate(index int, term int) bool {
 }
 
 func (rf *Raft) getPrevLogInfo(server int) (int, int) {
+	// log.Printf("查看preinfo: %v\n", rf.nextIndex[server]-1)
+	if rf.nextIndex[server] == 0 {
+		return -1, -1
+	}
 	return rf.nextIndex[server] - 1, rf.logs[rf.nextIndex[server]-1].Term
+	// return rf.getLastIndex(), rf.logs[rf.getLastIndex()].Term
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
