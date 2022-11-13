@@ -90,6 +90,17 @@ type LogEntry struct {
 	Command interface{}
 }
 
+// func init() {
+// 	// 获取日志文件句柄
+// 	// 以 只写入文件|没有时创建|文件尾部追加 的形式打开这个文件
+// 	logFile, err := os.OpenFile(`./log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	// 设置存储位置
+// 	log.SetOutput(logFile)
+// }
+
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
@@ -176,7 +187,6 @@ type RequestVoteReply struct {
 
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-	// fmt.Printf("[	    func-RequestVote-rf test \n]")
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -185,7 +195,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
-		// fmt.Printf("[	    func-RequestVote-rf(%+v)		] : rf.reject: %v\n", rf.me, args.CandidateId)
+		//log.Printf("[投票否决] : args.Term[%v] < rf.currentTerm[%v], rf[%v] reject the candidate: %v\n",
+		// 	args.Term, rf.currentTerm,
+		// 	rf.me, args.CandidateId,
+		// )
 		return
 	}
 
@@ -197,10 +210,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.getVoteNum = 0
 	}
 
-	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || rf.votedFor != -1 && rf.votedFor != args.CandidateId && args.Term == reply.Term {
+	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || rf.votedFor != -1 {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
-		// fmt.Printf("[	    func-RequestVote-rf(%+v)		] : rf.reject: %v\n", rf.me, args.CandidateId)
+		//log.Printf("[投票否决] : rf[%v] LastLogIndex[%v] LastLogTerm[%v] votefor[%v], reject the candidate: %v LastLogIndex[%v] LastLogTerm[%v] \n",
+		// 	rf.me, rf.getLastIndex(), rf.getLastTerm(), rf.votedFor,
+		// 	args.CandidateId, args.LastLogIndex, args.LastLogTerm,
+		// )
 		return
 	} else {
 		reply.VoteGranted = true
@@ -208,10 +224,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		rf.votedFor = args.CandidateId
 		rf.state = FOLLOWER
-		rf.votedFor = -1
 		rf.getVoteNum = 0
 		rf.lastResetElectionTime = time.Now()
-		// fmt.Printf("[	    func-RequestVote-rf(%+v)		] : rf.voted: %v\n", rf.me, rf.votedFor)
+		//log.Printf("[投票成功] : rf[%v] vote candidate: %v\n", rf.me, args.CandidateId)
 		return
 	}
 }
@@ -244,7 +259,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	// fmt.Printf("[	    func-RequestVote-rpc test \n]")
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
@@ -310,12 +324,11 @@ func (rf *Raft) ticker() {
 			rf.getVoteNum = 1
 
 			// 发起投票
-			// fmt.Printf("[++++elect++++] :Rf[%v] send a election\n", rf.me)
+			//log.Printf("[发起投票] :Rf[%v] 发起投票\n", rf.me)
 			for i := 0; i < len(rf.peers); i++ {
 				if i == rf.me {
 					continue
 				}
-				// fmt.Printf("[	    func-goroutinue (%+v)		] : send to :%v\n", rf.me, i)
 				go func(server int) {
 					rf.mu.Lock()
 					args := RequestVoteArgs{
@@ -327,7 +340,6 @@ func (rf *Raft) ticker() {
 					reply := RequestVoteReply{}
 					rf.mu.Unlock()
 
-					// fmt.Printf("[	    func-sendRequestVot(%+v)		] : send to :%v\n", rf.me, server)
 					res := rf.sendRequestVote(server, &args, &reply)
 
 					if res {
@@ -363,6 +375,7 @@ func (rf *Raft) ticker() {
 								rf.matchIndex[rf.me] = rf.getLastIndex()
 								rf.lastResetElectionTime = time.Now()
 								rf.mu.Unlock()
+								//log.Printf("[投票结果] : 现在的leader为[%v]\n", rf.me)
 								return
 							}
 							rf.mu.Unlock()
@@ -397,12 +410,17 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.currentTerm = 0
 	rf.votedFor = -1
-	rf.logs = make([]LogEntry, 0)
+	// rf.logs = make([]LogEntry, 0)
+	rf.logs = []LogEntry{}
+	rf.logs = append(rf.logs, LogEntry{})
 
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 
 	rf.nextIndex = make([]int, len(rf.peers))
+	for i := 0; i < len(rf.peers); i++ {
+		rf.nextIndex[i] = len(rf.logs)
+	}
 	rf.matchIndex = make([]int, len(rf.peers))
 
 	rf.state = FOLLOWER
@@ -417,5 +435,167 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
+	go rf.appendTicker()
+
 	return rf
+}
+
+func (rf *Raft) appendTicker() {
+	for !rf.killed() {
+		time.Sleep(HeartbeatSleep * time.Millisecond)
+		rf.mu.Lock()
+		if rf.state == LEADER {
+			rf.mu.Unlock()
+			rf.leaderAppendEntries()
+		} else {
+			rf.mu.Unlock()
+		}
+	}
+}
+
+// AppendEntriesArgs Append Entries RPC structure
+type AppendEntriesArgs struct {
+	Term         int        // leader的任期
+	LeaderId     int        // leader自身的ID
+	PrevLogIndex int        // 用于匹配日志位置是否是合适的，初始化rf.nextIndex[i] - 1
+	PrevLogTerm  int        // 用于匹配日志的任期是否是合适的，是否有冲突
+	Entries      []LogEntry // 预计存储的日志（为空时就是心跳连接）
+	LeaderCommit int        // leader的commit index指的是最后一个被大多数机器都复制的日志Index
+}
+
+type AppendEntriesReply struct {
+	Term        int  // leader的term可能是过时的，此时收到的Term用于更新他自己
+	Success     bool //	如果follower与Args中的PreLogIndex/PreLogTerm都匹配才会接过去新的日志（追加），不匹配直接返回false
+	UpNextIndex int  // 如果发生conflict时reply传过来的正确的下标用于更新nextIndex[i]
+}
+
+func (rf *Raft) leaderAppendEntries() {
+	for index := range rf.peers {
+		if index == rf.me {
+			continue
+		}
+		go func(server int) {
+			rf.mu.Lock()
+			if rf.state != LEADER {
+				rf.mu.Unlock()
+				return
+			}
+			prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
+			args := AppendEntriesArgs{
+				Term:         rf.currentTerm,
+				LeaderId:     rf.me,
+				PrevLogIndex: prevLogIndex,
+				PrevLogTerm:  prevLogTerm,
+				LeaderCommit: rf.commitIndex,
+			}
+			args.Entries = []LogEntry{}
+
+			reply := AppendEntriesReply{}
+			rf.mu.Unlock()
+
+			ok := rf.sendAppendEntries(server, &args, &reply)
+			for !ok {
+				ok = rf.sendAppendEntries(server, &args, &reply)
+			}
+
+			if reply.Success {
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+
+				rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
+				rf.nextIndex[server] = rf.matchIndex[server] + 1
+
+				// 判断commit log
+				for index := rf.getLastIndex(); index >= 0; index-- {
+					sum := 0
+					for i := 0; i < len(rf.peers); i++ {
+						if i == rf.me {
+							sum++
+							continue
+						}
+						if rf.matchIndex[i] >= index {
+							sum++
+						}
+					}
+
+					// 大于一半，且因为是从后往前，一定会大于原本commitIndex
+					if sum >= len(rf.peers)/2+1 {
+						rf.commitIndex = index
+						break
+					}
+				}
+			} else {
+				// 返回为冲突
+				// 如果冲突不为-1，则进行更新
+				if reply.UpNextIndex != -1 {
+					// 每次跳过一个Term
+					prevIndex := args.PrevLogIndex
+					for prevIndex > 0 && rf.logs[prevIndex].Term == args.PrevLogTerm {
+						prevIndex--
+					}
+					rf.nextIndex[server] = prevIndex
+				}
+			}
+		}(index)
+	}
+
+}
+
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	//log.Printf("[接收日志消息], [%v]发送给[%v], Term: %v, PrevLogIndex: %v, PrevLogTerm: %v, Entries: %v, LeaderCommit: %v\n",
+	// 	args.LeaderId, rf.me, args.Term, args.PrevLogIndex, args.PrevLogTerm, args.Entries, args.LeaderCommit,
+	// )
+	//log.Printf("[返回日志消息[%v]的属性], Term: %v, commitIndex: %v, logs: %v\n",
+	// 	rf.me, rf.currentTerm, rf.commitIndex, rf.logs,
+	// )
+	// defer func(re *AppendEntriesReply) {
+	//log.Printf("[返回日志消息], [%v]发送给[%v], Term: %v, Success: %v, UpNextIndex: %v\n",
+	// 		rf.me, args.LeaderId, re.Term, re.Success, re.UpNextIndex,
+	// 	)
+	// }(reply)
+
+	// 根据论文AppendEntries RPC中的规则进行实现
+
+	// rule 1
+	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		reply.Success = false
+		reply.UpNextIndex = -1
+		return
+	}
+
+	rf.state = FOLLOWER
+	rf.lastResetElectionTime = time.Now()
+	rf.currentTerm = args.Term
+	rf.votedFor = -1
+	rf.getVoteNum = 0
+
+	// rule 2,3
+	// 缺失日志或者日志Term对不上
+	if len(rf.logs) <= args.PrevLogIndex || rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm {
+		if args.PrevLogIndex < len(rf.logs) {
+			// Term对不上退一个
+			rf.logs = rf.logs[0:args.PrevLogIndex]
+		}
+		reply.Term = rf.currentTerm
+		reply.Success = false
+		reply.UpNextIndex = args.PrevLogIndex - 1
+		return
+	}
+
+	// rule 4
+	rf.logs = append(rf.logs[0:args.PrevLogIndex+1], args.Entries...)
+
+	// rule  5
+	if args.LeaderCommit > rf.commitIndex {
+		if args.LeaderCommit > len(rf.logs)-1 {
+			rf.commitIndex = args.LeaderCommit
+		} else {
+			rf.commitIndex = len(rf.logs) - 1
+		}
+	}
+	reply.Success = true
 }

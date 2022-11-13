@@ -14,10 +14,10 @@ const (
 	TO_CANDIDATE = 1
 	TO_LEADER    = 2
 
-	ELECTION_TIMEOUT_MAX = 175
-	ELECTION_TIMEOUT_MIN = 75
+	ELECTION_TIMEOUT_MAX = 400
+	ELECTION_TIMEOUT_MIN = 200
 
-	HeartbeatSleep = 35
+	HeartbeatSleep = 120
 )
 
 func getRand(server int64) int {
@@ -30,15 +30,20 @@ func (rf *Raft) getLastIndex() int {
 }
 
 func (rf *Raft) getLastTerm() int {
-	if len(rf.logs) == 0 {
-		return 0
-	} else {
-		return rf.logs[len(rf.logs)-1].Term
-	}
+	return rf.logs[len(rf.logs)-1].Term
 }
 
 func (rf *Raft) UpToDate(index int, term int) bool {
 	lastIndex := rf.getLastIndex()
 	lastTerm := rf.getLastTerm()
 	return term > lastTerm || (term == lastTerm && index >= lastIndex)
+}
+
+func (rf *Raft) getPrevLogInfo(server int) (int, int) {
+	return rf.nextIndex[server] - 1, rf.logs[rf.nextIndex[server]-1].Term
+}
+
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+	return ok
 }
