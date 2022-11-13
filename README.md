@@ -4,7 +4,7 @@
 
 - [x] Lab 1: MapReduce
 - [ ] Lab 2: Raft  
-  - [ ] Part 2A: leader election
+  - [x] Part 2A: leader election
   - [ ] Part 2B: log
   - [ ] Part 2C: persistence
   - [ ] Part 2D: log compaction
