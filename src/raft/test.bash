@@ -1,0 +1,1 @@
+for i in {1..10}; do go test -race -run 2B; done

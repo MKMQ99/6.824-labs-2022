@@ -95,7 +95,8 @@ type LogEntry struct {
 func init() {
 	// 获取日志文件句柄
 	// 以 只写入文件|没有时创建|文件尾部追加 的形式打开这个文件
-	logFile, err := os.OpenFile(`./log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	// logFile, err := os.OpenFile(`./log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	logFile, err := os.OpenFile(`/dev/null`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		panic(err)
 	}
@@ -497,6 +498,9 @@ func (rf *Raft) leaderAppendEntries() {
 				rf.mu.Unlock()
 				return
 			}
+			// log.Printf("[getPrevLogInfo], [%v], Term: %v, log: %v, nextIndex: %v, matchIndex: %v\n",
+			// 	rf.me, rf.currentTerm, rf.logs, rf.nextIndex, rf.matchIndex,
+			// )
 			prevLogIndex, prevLogTerm := rf.getPrevLogInfo(server)
 			args := AppendEntriesArgs{
 				Term:         rf.currentTerm,
@@ -569,7 +573,8 @@ func (rf *Raft) leaderAppendEntries() {
 					if reply.UpNextIndex != -1 {
 						// 每次跳过一个Term
 						prevIndex := args.PrevLogIndex
-						for prevIndex > 0 && rf.logs[prevIndex].Term == args.PrevLogTerm {
+						//为什么 > 1, 因为原始插入了一条空log, 所以nextIndex至少为 1
+						for prevIndex > 1 && rf.logs[prevIndex].Term == args.PrevLogTerm {
 							prevIndex--
 						}
 						rf.nextIndex[server] = prevIndex
@@ -628,6 +633,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term = rf.currentTerm
 		reply.Success = false
 		reply.UpNextIndex = args.PrevLogIndex - 1
+		log.Printf("[break rule2/3, [%v] reply to [%v]]\n",
+			rf.me, args.LeaderId,
+		)
 		return
 	}
 
