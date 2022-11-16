@@ -27,11 +27,15 @@ func getRand(server int64) int {
 }
 
 func (rf *Raft) getLastIndex() int {
-	return len(rf.logs) - 1
+	return len(rf.logs) - 1 + rf.lastIncludeIndex
 }
 
 func (rf *Raft) getLastTerm() int {
-	return rf.logs[len(rf.logs)-1].Term
+	if len(rf.logs)-1 == 0 {
+		return rf.lastIncludeTerm
+	} else {
+		return rf.logs[len(rf.logs)-1].Term
+	}
 }
 
 func (rf *Raft) UpToDate(index int, term int) bool {
@@ -41,15 +45,31 @@ func (rf *Raft) UpToDate(index int, term int) bool {
 }
 
 func (rf *Raft) getPrevLogInfo(server int) (int, int) {
-	// log.Printf("查看preinfo: %v\n", rf.nextIndex[server]-1)
-	// if rf.nextIndex[server] == 0 {
-	// 	return -1, -1
-	// }
-	return rf.nextIndex[server] - 1, rf.logs[rf.nextIndex[server]-1].Term
-	// return rf.getLastIndex(), rf.logs[rf.getLastIndex()].Term
+	// return rf.nextIndex[server] - 1, rf.logs[rf.nextIndex[server]-1].Term
+	newEntryBeginIndex := rf.nextIndex[server] - 1
+	lastIndex := rf.getLastIndex()
+	// 前面 leader 发送的 PrevLogIndex 太老会返回 UpNextIndex = PrevLogIndex + 1, 同时设置 nextIndex[server] 也为 PrevLogIndex + 1, 可能超出了 lastIndex
+	if newEntryBeginIndex == lastIndex+1 {
+		newEntryBeginIndex = lastIndex
+	}
+	return newEntryBeginIndex, rf.restoreLogTerm(newEntryBeginIndex)
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	return ok
+}
+
+// 通过快照偏移还原真实日志条目
+func (rf *Raft) restoreLog(curIndex int) LogEntry {
+	return rf.logs[curIndex-rf.lastIncludeIndex]
+}
+
+// 通过快照偏移还原真实日志任期
+func (rf *Raft) restoreLogTerm(curIndex int) int {
+	// 如果当前index与快照一致/日志为空，直接返回快照/快照初始化信息，否则根据快照计算
+	if curIndex-rf.lastIncludeIndex == 0 {
+		return rf.lastIncludeTerm
+	}
+	return rf.logs[curIndex-rf.lastIncludeIndex].Term
 }
