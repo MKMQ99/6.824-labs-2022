@@ -6,7 +6,7 @@
 - [ ] Lab 2: Raft  
   - [x] Part 2A: leader election
   - [x] Part 2B: log
-  - [ ] Part 2C: persistence
+  - [x] Part 2C: persistence
   - [ ] Part 2D: log compaction
 - [ ] Lab 3: Fault-tolerant Key/Value Service 
   - [ ] Part 3A: Key/value service without snapshots
