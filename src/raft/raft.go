@@ -248,8 +248,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.persist()
 	}
 
-	// rf.votedFor != args.CandidateId 保证一个任期只有一个Leader
-	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || (rf.votedFor != -1 && rf.votedFor != args.CandidateId) {
+	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || rf.votedFor != -1 {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
 		log.Printf("[投票否决] : rf[%v] LastLogIndex[%v] LastLogTerm[%v] votefor[%v], reject the candidate: %v LastLogIndex[%v] LastLogTerm[%v] \n",
