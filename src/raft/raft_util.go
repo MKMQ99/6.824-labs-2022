@@ -15,9 +15,9 @@ const (
 	TO_LEADER    = 2
 
 	ELECTION_TIMEOUT_MAX = 400
-	ELECTION_TIMEOUT_MIN = 200
+	ELECTION_TIMEOUT_MIN = 250
 
-	HeartbeatSleep = 120
+	HeartbeatSleep = 100
 	AppliedSleep   = 10
 )
 

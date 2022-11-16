@@ -20,6 +20,7 @@ package raft
 import (
 	//	"bytes"
 
+	"bytes"
 	"log"
 	"math/rand"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	//	"6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
 )
 
@@ -130,6 +132,25 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	err := e.Encode(rf.currentTerm)
+	if err != nil {
+		DPrintf("%v encode currentTerm error: %v", rf, err)
+	}
+
+	err = e.Encode(rf.votedFor)
+	if err != nil {
+		DPrintf("%v encode votedFor error: %v", rf, err)
+	}
+
+	err = e.Encode(rf.logs)
+	if err != nil {
+		DPrintf("%v encode log error: %v", rf, err)
+	}
+
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 // restore previously persisted state.
@@ -150,6 +171,19 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm, votedFor int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+		d.Decode(&votedFor) != nil ||
+		d.Decode(&logs) != nil {
+		log.Println("decode error")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.logs = logs
+	}
 }
 
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
@@ -211,9 +245,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.state = FOLLOWER
 		rf.votedFor = -1
 		rf.getVoteNum = 0
+		rf.persist()
 	}
 
-	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || rf.votedFor != -1 {
+	// rf.votedFor != args.CandidateId 保证一个任期只有一个Leader
+	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || (rf.votedFor != -1 && rf.votedFor != args.CandidateId) {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
 		log.Printf("[投票否决] : rf[%v] LastLogIndex[%v] LastLogTerm[%v] votefor[%v], reject the candidate: %v LastLogIndex[%v] LastLogTerm[%v] \n",
@@ -223,12 +259,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	} else {
 		reply.VoteGranted = true
+		log.Printf("[投票预成功] : rf[%v] vote candidate: %v, prev_voteFor: %v\n", rf.me, args.CandidateId, rf.votedFor)
 		rf.currentTerm = args.Term
 		reply.Term = rf.currentTerm
 		rf.votedFor = args.CandidateId
-		rf.state = FOLLOWER
 		rf.getVoteNum = 0
 		rf.lastResetElectionTime = time.Now()
+		rf.persist()
 		log.Printf("[投票成功] : rf[%v] vote candidate: %v\n", rf.me, args.CandidateId)
 		return
 	}
@@ -296,6 +333,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		index = rf.getLastIndex() + 1
 		term = rf.currentTerm
 		rf.logs = append(rf.logs, LogEntry{Term: term, Command: command})
+		rf.persist()
 		log.Printf("[客户端命令输入]: %v, term: %v\n", command, term)
 		return index, term, isLeader
 	}
@@ -338,6 +376,7 @@ func (rf *Raft) ticker() {
 			rf.currentTerm++
 			rf.votedFor = rf.me
 			rf.getVoteNum = 1
+			rf.persist()
 
 			// 发起投票
 			log.Printf("[发起投票] :Rf[%v] 发起投票\n", rf.me)
@@ -373,6 +412,7 @@ func (rf *Raft) ticker() {
 							rf.state = FOLLOWER
 							rf.votedFor = -1
 							rf.getVoteNum = 0
+							rf.persist()
 							rf.mu.Unlock()
 							return
 						}
@@ -383,6 +423,11 @@ func (rf *Raft) ticker() {
 								rf.state = LEADER
 								rf.votedFor = -1
 								rf.getVoteNum = 0
+								rf.persist()
+								// 选举成功立马添加一条空的log
+								// 发送空command的方法称为 no-op 日志，解决figure8问题,帮助leader将以前Term的日志附带发送，但是这里仅仅发送了心跳
+								rf.leaderAppendEntries()
+
 								rf.nextIndex = make([]int, len(rf.peers))
 								for i := 0; i < len(rf.peers); i++ {
 									rf.nextIndex[i] = rf.getLastIndex() + 1
@@ -524,6 +569,16 @@ func (rf *Raft) leaderAppendEntries() {
 
 			ok := rf.sendAppendEntries(server, &args, &reply)
 			// for !ok {
+			// 	// time.Sleep(2 * time.Millisecond)
+			// 	if rf.killed() {
+			// 		return
+			// 	}
+			// 	rf.mu.Lock()
+			// 	if rf.state != LEADER {
+			// 		rf.mu.Unlock()
+			// 		return
+			// 	}
+			// 	rf.mu.Unlock()
 			// 	ok = rf.sendAppendEntries(server, &args, &reply)
 			// }
 			if ok {
@@ -540,6 +595,7 @@ func (rf *Raft) leaderAppendEntries() {
 					rf.votedFor = -1
 					rf.getVoteNum = 0
 					rf.lastResetElectionTime = time.Now()
+					rf.persist()
 					return
 				}
 
@@ -549,7 +605,7 @@ func (rf *Raft) leaderAppendEntries() {
 					rf.nextIndex[server] = rf.matchIndex[server] + 1
 
 					// 判断commit log
-					for index := rf.getLastIndex(); index >= 0; index-- {
+					for index := rf.getLastIndex(); index > rf.commitIndex; index-- {
 						sum := 0
 						for i := 0; i < len(rf.peers); i++ {
 							if i == rf.me {
@@ -562,7 +618,8 @@ func (rf *Raft) leaderAppendEntries() {
 						}
 
 						// 大于一半，且因为是从后往前，一定会大于原本commitIndex
-						if sum >= len(rf.peers)/2+1 {
+						// 后面那个条件很重要, 因为论文figure8给出了一种情况，表明leader只能提交当前Term的log, 以前Term的log是附带提交
+						if sum >= len(rf.peers)/2+1 && rf.logs[index].Term == rf.currentTerm {
 							rf.commitIndex = index
 							break
 						}
@@ -617,11 +674,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
+	reply.Success = true
+	reply.Term = args.Term
+	reply.UpNextIndex = -1
+
 	rf.state = FOLLOWER
+	//这里voteFor不能设置成-1，否则会重复投票
 	rf.lastResetElectionTime = time.Now()
 	rf.currentTerm = args.Term
-	rf.votedFor = -1
 	rf.getVoteNum = 0
+	rf.persist()
 
 	// rule 2,3
 	// 缺失日志或者日志Term对不上
@@ -641,16 +703,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// rule 4
 	rf.logs = append(rf.logs[0:args.PrevLogIndex+1], args.Entries...)
+	rf.persist()
 
 	// rule  5
 	if args.LeaderCommit > rf.commitIndex {
-		if args.LeaderCommit > len(rf.logs)-1 {
-			rf.commitIndex = args.LeaderCommit
+		if args.LeaderCommit > rf.getLastIndex() {
+			rf.commitIndex = rf.getLastIndex()
 		} else {
-			rf.commitIndex = len(rf.logs) - 1
+			rf.commitIndex = args.LeaderCommit
 		}
 	}
-	reply.Success = true
 }
 
 func (rf *Raft) committedTicker() {
