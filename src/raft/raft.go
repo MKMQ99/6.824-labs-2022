@@ -22,7 +22,6 @@ import (
 
 	"bytes"
 	"log"
-	"math/rand"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -79,10 +78,9 @@ type Raft struct {
 	matchIndex []int // 对于每一个服务器，已经复制给他的日志的最高索引值
 	// 以上成员来源于论文
 
-	getVoteNum            int           // 记录此次投票中获取的票数 2A
-	state                 State         // 记录当前是三个状态里的哪一个 2A
-	lastResetElectionTime time.Time     // 最后一次更改时间 2A
-	electionTimeout       time.Duration // 200-400ms 选举的间隔时间不同 可以有效的防止选举失败 2A
+	getVoteNum            int       // 记录此次投票中获取的票数 2A
+	state                 State     // 记录当前是三个状态里的哪一个 2A
+	lastResetElectionTime time.Time // 最后一次更改时间 2A
 
 	applyCh chan ApplyMsg
 
@@ -287,10 +285,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
-		log.Printf("[投票否决] : args.Term[%v] < rf.currentTerm[%v], rf[%v] reject the candidate: %v\n",
-			args.Term, rf.currentTerm,
-			rf.me, args.CandidateId,
-		)
+		// log.Printf("[投票否决] : args.Term[%v] < rf.currentTerm[%v], rf[%v] reject the candidate: %v\n",
+		// 	args.Term, rf.currentTerm,
+		// 	rf.me, args.CandidateId,
+		// )
 		return
 	}
 
@@ -306,21 +304,21 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if !rf.UpToDate(args.LastLogIndex, args.LastLogTerm) || rf.votedFor != -1 {
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
-		log.Printf("[投票否决] : rf[%v] LastLogIndex[%v] LastLogTerm[%v] votefor[%v], reject the candidate: %v LastLogIndex[%v] LastLogTerm[%v] \n",
-			rf.me, rf.getLastIndex(), rf.getLastTerm(), rf.votedFor,
-			args.CandidateId, args.LastLogIndex, args.LastLogTerm,
-		)
+		// log.Printf("[投票否决] : rf[%v] LastLogIndex[%v] LastLogTerm[%v] votefor[%v], reject the candidate: %v LastLogIndex[%v] LastLogTerm[%v] \n",
+		// 	rf.me, rf.getLastIndex(), rf.getLastTerm(), rf.votedFor,
+		// 	args.CandidateId, args.LastLogIndex, args.LastLogTerm,
+		// )
 		return
 	} else {
 		reply.VoteGranted = true
-		log.Printf("[投票预成功] : rf[%v] vote candidate: %v, prev_voteFor: %v\n", rf.me, args.CandidateId, rf.votedFor)
+		// log.Printf("[投票预成功] : rf[%v] vote candidate: %v, prev_voteFor: %v\n", rf.me, args.CandidateId, rf.votedFor)
 		rf.currentTerm = args.Term
 		reply.Term = rf.currentTerm
 		rf.votedFor = args.CandidateId
 		rf.getVoteNum = 0
 		rf.lastResetElectionTime = time.Now()
 		rf.persist()
-		log.Printf("[投票成功] : rf[%v] vote candidate: %v\n", rf.me, args.CandidateId)
+		// log.Printf("[投票成功] : rf[%v] vote candidate: %v\n", rf.me, args.CandidateId)
 		return
 	}
 }
@@ -388,7 +386,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		term = rf.currentTerm
 		rf.logs = append(rf.logs, LogEntry{Term: term, Command: command})
 		rf.persist()
-		log.Printf("[客户端命令输入]: %v, term: %v\n", command, term)
+		// lab3A TestSpeed3A 要求每个心跳周期至少完成三次客户端请求, 本来没有这个goroutie，会在下一次发送心跳时批量对收到的日志发起共识
+		// 但因为 TestSpeed3A 会循环发起请求，每个请求阻塞，服务端只有在收到 applyCh 的日志后才会通知客户端，所以本质上在这个测试中服务端约等于一个心跳周期只处理一个请求。
+		// 所以需要在 start 时发起心跳，开始共识
+		go rf.leaderAppendEntries()
+		// log.Printf("[客户端命令输入]: %v, term: %v\n", command, term)
 		return index, term, isLeader
 	}
 }
@@ -433,7 +435,7 @@ func (rf *Raft) ticker() {
 			rf.persist()
 
 			// 发起投票
-			log.Printf("[发起投票] :Rf[%v] 发起投票\n", rf.me)
+			// log.Printf("[发起投票] :Rf[%v] 发起投票\n", rf.me)
 			for i := 0; i < len(rf.peers); i++ {
 				if i == rf.me {
 					continue
@@ -490,7 +492,7 @@ func (rf *Raft) ticker() {
 								rf.matchIndex[rf.me] = rf.getLastIndex()
 								rf.lastResetElectionTime = time.Now()
 								rf.mu.Unlock()
-								log.Printf("[投票结果] : 现在的leader为[%v]\n", rf.me)
+								// log.Printf("[投票结果] : 现在的leader为[%v]\n", rf.me)
 								return
 							}
 							rf.mu.Unlock()
@@ -540,7 +542,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.state = FOLLOWER
 	rf.getVoteNum = 0
-	rf.electionTimeout = time.Millisecond * time.Duration(ELECTION_TIMEOUT_MIN+rand.Intn(ELECTION_TIMEOUT_MAX-ELECTION_TIMEOUT_MIN))
 	rf.lastResetElectionTime = time.Now()
 	rf.applyCh = applyCh
 
@@ -720,22 +721,22 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	log.Printf("[接收日志消息], [%v]从[%v]收到, Term: %v, PrevLogIndex: %v, PrevLogTerm: %v, Entries: %v, LeaderCommit: %v\n",
-		rf.me, args.LeaderId, args.Term, args.PrevLogIndex, args.PrevLogTerm, args.Entries, args.LeaderCommit,
-	)
-	log.Printf("[返回日志消息[%v]修改前属性], Term: %v, commitIndex: %v, logs: %v\n",
-		rf.me, rf.currentTerm, rf.commitIndex, rf.logs,
-	)
-	defer func(re *AppendEntriesReply) {
-		log.Printf("[返回日志消息], [%v]发送给[%v], Term: %v, Success: %v, UpNextIndex: %v\n",
-			rf.me, args.LeaderId, re.Term, re.Success, re.UpNextIndex,
-		)
-	}(reply)
-	defer func(r *Raft) {
-		log.Printf("[返回日志消息[%v]修改后属性], Term: %v, commitIndex: %v, logs: %v\n",
-			r.me, r.currentTerm, r.commitIndex, r.logs,
-		)
-	}(rf)
+	// log.Printf("[接收日志消息], [%v]从[%v]收到, Term: %v, PrevLogIndex: %v, PrevLogTerm: %v, Entries: %v, LeaderCommit: %v\n",
+	// 	rf.me, args.LeaderId, args.Term, args.PrevLogIndex, args.PrevLogTerm, args.Entries, args.LeaderCommit,
+	// )
+	// log.Printf("[返回日志消息[%v]修改前属性], Term: %v, commitIndex: %v, logs: %v\n",
+	// 	rf.me, rf.currentTerm, rf.commitIndex, rf.logs,
+	// )
+	// defer func(re *AppendEntriesReply) {
+	// 	log.Printf("[返回日志消息], [%v]发送给[%v], Term: %v, Success: %v, UpNextIndex: %v\n",
+	// 		rf.me, args.LeaderId, re.Term, re.Success, re.UpNextIndex,
+	// 	)
+	// }(reply)
+	// defer func(r *Raft) {
+	// 	log.Printf("[返回日志消息[%v]修改后属性], Term: %v, commitIndex: %v, logs: %v\n",
+	// 		r.me, r.currentTerm, r.commitIndex, r.logs,
+	// 	)
+	// }(rf)
 
 	// 根据论文AppendEntries RPC中的规则进行实现
 
