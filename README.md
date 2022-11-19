@@ -9,7 +9,7 @@
   - [x] Part 2C: persistence
   - [x] Part 2D: log compaction
 - [ ] Lab 3: Fault-tolerant Key/Value Service 
-  - [ ] Part 3A: Key/value service without snapshots
+  - [x] Part 3A: Key/value service without snapshots
   - [ ] Part 3B: Key/value service with snapshots
 - [ ] Lab 4: Sharded Key/Value Service 
   - [ ] Part 4A: The Shard controller
