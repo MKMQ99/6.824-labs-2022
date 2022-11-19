@@ -1,16 +1,21 @@
 package kvraft
 
-import "6.824/porcupine"
-import "6.824/models"
-import "testing"
-import "strconv"
-import "time"
-import "math/rand"
-import "strings"
-import "sync"
-import "sync/atomic"
-import "fmt"
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.824/models"
+	"6.824/porcupine"
+)
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -591,12 +596,10 @@ func TestPersistPartitionUnreliableLinearizable3A(t *testing.T) {
 	GenericTest(t, "3A", 15, 7, true, true, true, -1, true)
 }
 
-//
 // if one server falls behind, then rejoins, does it
 // recover by using the InstallSnapshot RPC?
 // also checks that majority discards committed log entries
 // even if minority doesn't respond.
-//
 func TestSnapshotRPC3B(t *testing.T) {
 	const nservers = 3
 	maxraftstate := 1000
@@ -712,11 +715,23 @@ func TestSnapshotUnreliableRecover3B(t *testing.T) {
 }
 
 func TestSnapshotUnreliableRecoverConcurrentPartition3B(t *testing.T) {
+	os.Remove(`./log.log`)
+	logFile, err := os.OpenFile(`/home/sq/go/6.824-labs-2022/src/kvraft/log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	// 设置存储位置
+	log.SetOutput(logFile)
 	// Test: unreliable net, restarts, partitions, snapshots, many clients (3B) ...
 	GenericTest(t, "3B", 5, 5, true, true, true, 1000, false)
 }
 
 func TestSnapshotUnreliableRecoverConcurrentPartitionLinearizable3B(t *testing.T) {
 	// Test: unreliable net, restarts, partitions, snapshots, random keys, many clients (3B) ...
+	logFile, err := os.OpenFile(`/home/sq/go/6.824-labs-2022/src/kvraft/log1.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	log.SetOutput(logFile)
 	GenericTest(t, "3B", 15, 7, true, true, true, 1000, true)
 }

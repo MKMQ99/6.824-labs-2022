@@ -1,7 +1,9 @@
 package kvraft
 
 import (
+	"bytes"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,19 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 		log.Printf(format, a...)
 	}
 	return
+}
+
+func init() {
+	// 获取日志文件句柄
+	// 以 只写入文件|没有时创建|文件尾部追加 的形式打开这个文件
+	os.Remove(`./log.log`)
+	logFile, err := os.OpenFile(`./log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	// logFile, err := os.OpenFile(`/dev/null`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	// 设置存储位置
+	log.SetOutput(logFile)
 }
 
 type Op struct {
@@ -44,6 +59,8 @@ type KVServer struct {
 	seqMap    map[int64]int     //为了确保seq只执行一次	clientId / seqId
 	waitChMap map[int]chan Op   //传递由下层Raft服务的appCh传过来的command	index / chan(Op)
 	kvPersist map[string]string // 存储持久化的KV键值对	K / V
+
+	lastIncludeIndex int
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -63,6 +80,12 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	lastIndex, _, _ := kv.rf.Start(op)
 	ch := kv.getWaitCh(lastIndex)
 
+	defer func(idx int) {
+		kv.mu.Lock()
+		delete(kv.waitChMap, idx)
+		kv.mu.Unlock()
+	}(lastIndex)
+
 	select {
 	case replyOp := <-ch:
 		if op.ClientId != replyOp.ClientId || op.SeqId != replyOp.SeqId {
@@ -77,10 +100,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	case <-time.After(REPLY_TIMEOUT * time.Millisecond):
 		reply.Err = ErrWrongLeader
 	}
-
-	kv.mu.Lock()
-	delete(kv.waitChMap, lastIndex)
-	kv.mu.Unlock()
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
@@ -99,8 +118,13 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// 封装Op传到下层start
 	op := Op{OpType: args.Op, Key: args.Key, Value: args.Value, SeqId: args.SeqId, ClientId: args.ClientId}
 	lastIndex, _, _ := kv.rf.Start(op)
-
 	ch := kv.getWaitCh(lastIndex)
+
+	defer func(idx int) {
+		kv.mu.Lock()
+		delete(kv.waitChMap, idx)
+		kv.mu.Unlock()
+	}(lastIndex)
 
 	select {
 	case replyOp := <-ch:
@@ -113,10 +137,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	case <-time.After(REPLY_TIMEOUT * time.Millisecond):
 		reply.Err = ErrWrongLeader
 	}
-
-	kv.mu.Lock()
-	delete(kv.waitChMap, lastIndex)
-	kv.mu.Unlock()
 }
 
 // the tester calls Kill() when a KVServer instance won't
@@ -169,7 +189,43 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.kvPersist = make(map[string]string)
 	kv.waitChMap = make(map[int]chan Op)
 
+	kv.lastIncludeIndex = -1
+
+	snapshot := persister.ReadSnapshot()
+	if len(snapshot) > 0 {
+		kv.DecodeSnapShot(snapshot)
+	}
+
 	go kv.applyMsgHandlerLoop()
 
 	return kv
+}
+
+func (kv *KVServer) PersistSnapShot() []byte {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	log.Printf("[log] raftId: %v\nkvPersist: %v\nseqMap: %v\n", kv.rf.GetMe(), kv.kvPersist, kv.seqMap)
+	e.Encode(kv.kvPersist)
+	e.Encode(kv.seqMap)
+	data := w.Bytes()
+	return data
+}
+
+func (kv *KVServer) DecodeSnapShot(snapshot []byte) {
+	if snapshot == nil || len(snapshot) < 1 {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	var kvPersist map[string]string
+	var seqMap map[int64]int
+	if d.Decode(&kvPersist) == nil && d.Decode(&seqMap) == nil {
+		kv.kvPersist = kvPersist
+		kv.seqMap = seqMap
+	} else {
+		log.Printf("[Server(%v)] Failed to decode snapshot!!!", kv.me)
+	}
 }

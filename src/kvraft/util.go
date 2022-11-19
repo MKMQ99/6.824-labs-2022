@@ -23,6 +23,11 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 		select {
 		case msg := <-kv.applyCh:
 			if msg.CommandValid {
+
+				if kv.lastIncludeIndex >= msg.CommandIndex {
+					return
+				}
+
 				index := msg.CommandIndex
 				op := msg.Command.(Op)
 				if !kv.ifDuplicate(op.ClientId, op.SeqId) {
@@ -37,8 +42,23 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 					kv.mu.Unlock()
 				}
 
+				if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
+					snapshot := kv.PersistSnapShot()
+					kv.rf.Snapshot(msg.CommandIndex, snapshot)
+				}
+
 				// 将返回的ch返回waitCh
 				kv.getWaitCh(index) <- op
+			}
+			if msg.SnapshotValid {
+				kv.mu.Lock()
+				// 判断此时有没有竞争
+				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+					// 读取快照的数据
+					kv.DecodeSnapShot(msg.Snapshot)
+					kv.lastIncludeIndex = msg.SnapshotIndex
+				}
+				kv.mu.Unlock()
 			}
 		}
 	}

@@ -73,3 +73,12 @@ func (rf *Raft) restoreLogTerm(curIndex int) int {
 	}
 	return rf.logs[curIndex-rf.lastIncludeIndex].Term
 }
+
+// lab3B 使用
+func (rf *Raft) GetRaftStateSize() int {
+	return rf.persister.RaftStateSize()
+}
+
+func (rf *Raft) GetMe() int {
+	return rf.me
+}
