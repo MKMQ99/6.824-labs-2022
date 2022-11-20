@@ -1,5 +1,7 @@
 package kvraft
 
+import "log"
+
 const (
 	REPLY_TIMEOUT = 400
 )
@@ -32,6 +34,7 @@ func (kv *KVServer) applyMsgHandlerLoop() {
 				op := msg.Command.(Op)
 				if !kv.ifDuplicate(op.ClientId, op.SeqId) {
 					kv.mu.Lock()
+					log.Printf("[log], raftID : %v\nkvPersist: %v\n", kv.rf.GetMe(), kv.kvPersist)
 					switch op.OpType {
 					case "Put":
 						kv.kvPersist[op.Key] = op.Value

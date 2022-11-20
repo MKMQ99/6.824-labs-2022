@@ -834,6 +834,9 @@ func (rf *Raft) committedTicker() {
 				CommandIndex:  rf.lastApplied,
 				Command:       rf.restoreLog(rf.lastApplied).Command,
 			})
+			log.Printf("[Commit], [%v], Index: %v, Command: %v\n",
+				rf.me, rf.lastApplied, rf.restoreLog(rf.lastApplied).Command,
+			)
 		}
 		rf.mu.Unlock()
 
