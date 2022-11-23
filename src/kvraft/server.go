@@ -87,18 +87,19 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}(lastIndex)
 
 	select {
-	case replyOp := <-ch:
-		if op.ClientId != replyOp.ClientId || op.SeqId != replyOp.SeqId {
-			reply.Err = ErrWrongLeader
-		} else {
-			reply.Err = OK
-			kv.mu.Lock()
-			reply.Value = kv.kvPersist[args.Key]
+	case <-ch:
+		kv.mu.Lock()
+		if kv.kvPersist[args.Key] == "" {
+			reply.Err = ErrNoKey
 			kv.mu.Unlock()
 			return
 		}
+		reply.Err = OK
+		reply.Value = kv.kvPersist[args.Key]
+		kv.mu.Unlock()
+		return
 	case <-time.After(REPLY_TIMEOUT * time.Millisecond):
-		reply.Err = ErrWrongLeader
+		reply.Err = ErrTimeOut
 	}
 }
 
@@ -127,15 +128,10 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}(lastIndex)
 
 	select {
-	case replyOp := <-ch:
-		// 通过clientId、seqId确定唯一操作序列
-		if op.ClientId != replyOp.ClientId || op.SeqId != replyOp.SeqId {
-			reply.Err = ErrWrongLeader
-		} else {
-			reply.Err = OK
-		}
+	case <-ch:
+		reply.Err = OK
 	case <-time.After(REPLY_TIMEOUT * time.Millisecond):
-		reply.Err = ErrWrongLeader
+		reply.Err = ErrTimeOut
 	}
 }
 
@@ -210,6 +206,7 @@ func (kv *KVServer) PersistSnapShot() []byte {
 	log.Printf("[log] raftId: %v\nkvPersist: %v\nseqMap: %v\n", kv.rf.GetMe(), kv.kvPersist, kv.seqMap)
 	e.Encode(kv.kvPersist)
 	e.Encode(kv.seqMap)
+	e.Encode(kv.lastIncludeIndex)
 	data := w.Bytes()
 	return data
 }
@@ -222,9 +219,11 @@ func (kv *KVServer) DecodeSnapShot(snapshot []byte) {
 	d := labgob.NewDecoder(r)
 	var kvPersist map[string]string
 	var seqMap map[int64]int
-	if d.Decode(&kvPersist) == nil && d.Decode(&seqMap) == nil {
+	var lastIncludeIndex int
+	if d.Decode(&kvPersist) == nil && d.Decode(&seqMap) == nil && d.Decode(&lastIncludeIndex) != nil {
 		kv.kvPersist = kvPersist
 		kv.seqMap = seqMap
+		kv.lastIncludeIndex = lastIncludeIndex
 	} else {
 		log.Printf("[Server(%v)] Failed to decode snapshot!!!", kv.me)
 	}

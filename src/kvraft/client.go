@@ -3,6 +3,7 @@ package kvraft
 import (
 	"crypto/rand"
 	"math/big"
+	"time"
 
 	"6.824/labrpc"
 )
@@ -28,6 +29,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck.servers = servers
 	// You'll have to add code here.
 	ck.clientId = nrand()
+	ck.seqId = 0
 	ck.leaderId = 0
 	return ck
 }
@@ -62,12 +64,14 @@ func (ck *Clerk) Get(key string) string {
 			} else if reply.Err == ErrWrongLeader {
 				serverId = (serverId + 1) % len(ck.servers)
 				continue
+			} else if reply.Err == ErrTimeOut {
+				continue
 			}
 		}
 
 		// 节点发生crash等原因
 		serverId = (serverId + 1) % len(ck.servers)
-
+		time.Sleep(CHANGELEADERPERIODS)
 	}
 }
 
@@ -95,10 +99,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			} else if reply.Err == ErrWrongLeader {
 				serverId = (serverId + 1) % len(ck.servers)
 				continue
+			} else if reply.Err == ErrTimeOut {
+				continue
 			}
 		}
 
 		serverId = (serverId + 1) % len(ck.servers)
+		time.Sleep(CHANGELEADERPERIODS)
 
 	}
 }
