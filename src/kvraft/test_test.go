@@ -3,9 +3,7 @@ package kvraft
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -715,23 +713,23 @@ func TestSnapshotUnreliableRecover3B(t *testing.T) {
 }
 
 func TestSnapshotUnreliableRecoverConcurrentPartition3B(t *testing.T) {
-	os.Remove(`./log.log`)
-	logFile, err := os.OpenFile(`/home/sq/go/6.824-labs-2022/src/kvraft/log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		panic(err)
-	}
-	// 设置存储位置
-	log.SetOutput(logFile)
+	// os.Remove(`./log.log`)
+	// logFile, err := os.OpenFile(`/home/sq/go/6.824-labs-2022/src/kvraft/log.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// // 设置存储位置
+	// log.SetOutput(logFile)
 	// Test: unreliable net, restarts, partitions, snapshots, many clients (3B) ...
 	GenericTest(t, "3B", 5, 5, true, true, true, 1000, false)
 }
 
 func TestSnapshotUnreliableRecoverConcurrentPartitionLinearizable3B(t *testing.T) {
 	// Test: unreliable net, restarts, partitions, snapshots, random keys, many clients (3B) ...
-	logFile, err := os.OpenFile(`/home/sq/go/6.824-labs-2022/src/kvraft/log1.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		panic(err)
-	}
-	log.SetOutput(logFile)
+	// logFile, err := os.OpenFile(`/home/sq/go/6.824-labs-2022/src/kvraft/log1.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// log.SetOutput(logFile)
 	GenericTest(t, "3B", 15, 7, true, true, true, 1000, true)
 }
