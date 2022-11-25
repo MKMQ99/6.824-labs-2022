@@ -89,11 +89,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	select {
 	case <-ch:
 		kv.mu.Lock()
-		if kv.kvPersist[args.Key] == "" {
-			reply.Err = ErrNoKey
-			kv.mu.Unlock()
-			return
-		}
+		// if kv.kvPersist[args.Key] == "" {
+		// 	reply.Err = ErrNoKey
+		// 	kv.mu.Unlock()
+		// 	return
+		// }
 		reply.Err = OK
 		reply.Value = kv.kvPersist[args.Key]
 		kv.mu.Unlock()
@@ -220,7 +220,7 @@ func (kv *KVServer) DecodeSnapShot(snapshot []byte) {
 	var kvPersist map[string]string
 	var seqMap map[int64]int
 	var lastIncludeIndex int
-	if d.Decode(&kvPersist) == nil && d.Decode(&seqMap) == nil && d.Decode(&lastIncludeIndex) != nil {
+	if d.Decode(&kvPersist) == nil && d.Decode(&seqMap) == nil && d.Decode(&lastIncludeIndex) == nil {
 		kv.kvPersist = kvPersist
 		kv.seqMap = seqMap
 		kv.lastIncludeIndex = lastIncludeIndex

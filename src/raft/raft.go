@@ -254,6 +254,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// }
 
 	// 持久化快照信息
+	rf.persist()
 	rf.persister.SaveStateAndSnapshot(rf.persistData(), snapshot)
 }
 
@@ -917,6 +918,12 @@ func (rf *Raft) InstallSnapShot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		return
 	}
 
+	if rf.currentTerm < args.Term {
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+		rf.persist()
+	}
+
 	rf.currentTerm = args.Term
 	reply.Term = args.Term
 
@@ -949,6 +956,7 @@ func (rf *Raft) InstallSnapShot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	if index > rf.lastApplied {
 		rf.lastApplied = index
 	}
+	rf.persist()
 	rf.persister.SaveStateAndSnapshot(rf.persistData(), args.Data)
 
 	msg := ApplyMsg{
