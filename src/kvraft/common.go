@@ -36,3 +36,8 @@ type GetReply struct {
 	Err   Err
 	Value string
 }
+
+type CommandReply struct {
+	Err   Err
+	Value string
+}

@@ -3,7 +3,6 @@ package kvraft
 import (
 	"crypto/rand"
 	"math/big"
-	"time"
 
 	"6.824/labrpc"
 )
@@ -49,29 +48,16 @@ func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
 	ck.seqId++
 	args := GetArgs{Key: key, ClientId: ck.clientId, SeqId: ck.seqId}
-	serverId := ck.leaderId
 	for {
 		reply := GetReply{}
-		ok := ck.servers[serverId].Call("KVServer.Get", &args, &reply)
+		ok := ck.servers[ck.leaderId].Call("KVServer.Get", &args, &reply)
 
-		if ok {
-			if reply.Err == ErrNoKey {
-				ck.leaderId = serverId
-				return ""
-			} else if reply.Err == OK {
-				ck.leaderId = serverId
-				return reply.Value
-			} else if reply.Err == ErrWrongLeader {
-				serverId = (serverId + 1) % len(ck.servers)
-				continue
-			} else if reply.Err == ErrTimeOut {
-				continue
-			}
+		if !ok || reply.Err == ErrWrongLeader || reply.Err == ErrTimeOut {
+			// try next
+			ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
+			continue
 		}
-
-		// 节点发生crash等原因
-		serverId = (serverId + 1) % len(ck.servers)
-		time.Sleep(CHANGELEADERPERIODS)
+		return reply.Value
 	}
 }
 
@@ -86,27 +72,16 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
 	ck.seqId++
-	serverId := ck.leaderId
 	args := PutAppendArgs{Key: key, Value: value, Op: op, ClientId: ck.clientId, SeqId: ck.seqId}
 	for {
-
 		reply := PutAppendReply{}
-		ok := ck.servers[serverId].Call("KVServer.PutAppend", &args, &reply)
-		if ok {
-			if reply.Err == OK {
-				ck.leaderId = serverId
-				return
-			} else if reply.Err == ErrWrongLeader {
-				serverId = (serverId + 1) % len(ck.servers)
-				continue
-			} else if reply.Err == ErrTimeOut {
-				continue
-			}
+		ok := ck.servers[ck.leaderId].Call("KVServer.PutAppend", &args, &reply)
+		if !ok || reply.Err == ErrWrongLeader || reply.Err == ErrTimeOut {
+			// try next
+			ck.leaderId = (ck.leaderId + 1) % len(ck.servers)
+			continue
 		}
-
-		serverId = (serverId + 1) % len(ck.servers)
-		time.Sleep(CHANGELEADERPERIODS)
-
+		return
 	}
 }
 

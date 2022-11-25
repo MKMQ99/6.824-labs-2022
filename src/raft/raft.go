@@ -45,6 +45,7 @@ type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
 	CommandIndex int
+	CommandTerm  int
 
 	// For 2D:
 	SnapshotValid bool
@@ -835,6 +836,7 @@ func (rf *Raft) committedTicker() {
 				SnapshotValid: false,
 				CommandIndex:  rf.lastApplied,
 				Command:       rf.restoreLog(rf.lastApplied).Command,
+				CommandTerm:   rf.currentTerm,
 			})
 			log.Printf("[Commit], [%v], Index: %v, Command: %v\n",
 				rf.me, rf.lastApplied, rf.restoreLog(rf.lastApplied).Command,
