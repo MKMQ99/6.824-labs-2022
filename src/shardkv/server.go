@@ -2,7 +2,6 @@ package shardkv
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -189,7 +188,7 @@ func (kv *ShardKV) applyMsgHandlerLoop() {
 							case GetType:
 								// 如果是Get都不用做
 							default:
-								fmt.Printf("invalid command type: %v.", op.OpType)
+								log.Printf("invalid command type: %v.", op.OpType)
 							}
 						}
 					}
@@ -475,9 +474,21 @@ func (kv *ShardKV) PersistSnapShot() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	err := e.Encode(kv.shardsPersist)
+	if err != nil {
+		log.Fatalf("[%d-%d] fails to take snapshot.", kv.gid, kv.me)
+	}
 	err = e.Encode(kv.SeqMap)
+	if err != nil {
+		log.Fatalf("[%d-%d] fails to take snapshot.", kv.gid, kv.me)
+	}
 	err = e.Encode(kv.maxraftstate)
+	if err != nil {
+		log.Fatalf("[%d-%d] fails to take snapshot.", kv.gid, kv.me)
+	}
 	err = e.Encode(kv.Config)
+	if err != nil {
+		log.Fatalf("[%d-%d] fails to take snapshot.", kv.gid, kv.me)
+	}
 	err = e.Encode(kv.LastConfig)
 	if err != nil {
 		log.Fatalf("[%d-%d] fails to take snapshot.", kv.gid, kv.me)
